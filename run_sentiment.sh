@@ -1,0 +1,1 @@
+python classifier.py --option finetune --use_gpu

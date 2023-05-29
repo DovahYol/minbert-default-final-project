@@ -58,8 +58,30 @@ class AdamW(Optimizer):
                 # 4- After that main gradient-based update, update again using weight decay
                 #    (incorporating the learning rate again).
 
-                ### TODO
-                raise NotImplementedError
+                if len(state) == 0:
+                    state["step"] = torch.zeros((1,), dtype=torch.float, device=p.device)
+                    # Exponential moving average of gradient values
+                    state["exp_avg"] = torch.zeros_like(
+                        p, memory_format=torch.preserve_format
+                    )
+                    # Exponential moving average of squared gradient values
+                    state["exp_avg_sq"] = torch.zeros_like(
+                        p, memory_format=torch.preserve_format
+                    )
 
+                beta1, beta2 = group["betas"]
+                correct_bias = group["correct_bias"]
+                eps = group["eps"]
+                weight_decay = group["weight_decay"]
+
+                state["step"] += 1
+                state["exp_avg"] = beta1 * state["exp_avg"] + (1 - beta1) * grad
+                state["exp_avg_sq"] = beta2 * state["exp_avg_sq"] + (1 - beta2) * grad ** 2
+                p.data -= weight_decay * alpha * p.data
+                if correct_bias:
+                    alpha_hat = alpha * torch.sqrt(1 - beta2 ** state["step"]) / (1 - beta1 ** state["step"])
+                    p.data -= alpha_hat * state["exp_avg"] / (torch.sqrt(state["exp_avg_sq"]) + eps)
+                else:
+                    p.data -= alpha * state["exp_avg"] / (torch.sqrt(state["exp_avg_sq"]) + eps)
 
         return loss
