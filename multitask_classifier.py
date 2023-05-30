@@ -16,7 +16,7 @@ from datasets import SentenceClassificationDataset, SentencePairDataset, \
 from evaluation import test_model_multitask, model_eval_multitask
 
 
-TQDM_DISABLE=True
+TQDM_DISABLE=False
 
 # fix the random seed
 def seed_everything(seed=11711):
@@ -91,8 +91,7 @@ class MultitaskBERT(nn.Module):
         logits_1 = self.proj_paraphrase(bert_output['pooler_output']).contiguous().view(-1, BERT_HIDDEN_SIZE)
         bert_output = self.forward(input_ids_2, attention_mask_2)
         logits_2 = self.proj_paraphrase(bert_output['pooler_output']).contiguous().view(-1, BERT_HIDDEN_SIZE)
-        logits = F.cosine_similarity(logits_1, logits_2, dim=1)
-        return logits
+        return logits_1, logits_2
 
 
     def predict_similarity(self,
@@ -106,7 +105,7 @@ class MultitaskBERT(nn.Module):
         logits_1 = self.proj_similarity(bert_output['pooler_output']).contiguous().view(-1, BERT_HIDDEN_SIZE)
         bert_output = self.forward(input_ids_2, attention_mask_2)
         logits_2 = self.proj_similarity(bert_output['pooler_output']).contiguous().view(-1, BERT_HIDDEN_SIZE)
-        logits = F.cosine_similarity(logits_1, logits_2, dim=1)
+        logits = torch.einsum('ij,ij->i', logits_1, logits_2)
         return logits
 
 
@@ -188,7 +187,7 @@ def train_multitask(args):
                                             batch['attention_mask'], batch['labels'])
                     b_ids = b_ids.to(device)
                     b_mask = b_mask.to(device)
-                    b_labels = b_labels.to(device)
+                    b_labels = b_labels.to(device).view(-1)
                 else:
                     (b_ids1, b_mask1,
                     b_ids2, b_mask2,
@@ -199,19 +198,22 @@ def train_multitask(args):
                     b_mask1 = b_mask1.to(device)
                     b_ids2 = b_ids2.to(device)
                     b_mask2 = b_mask2.to(device)
-                    b_labels = b_labels.to(device)
+                    b_labels = b_labels.to(device).view(-1)
+                    if task == 'para':
+                        b_labels = torch.where(b_labels == 0, torch.tensor(-1), b_labels)
+                        b_labels = b_labels.float()
 
                 optimizer.zero_grad()
 
                 if task == 'sst':
                     logits = model.predict_sentiment(b_ids, b_mask)
-                    loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
+                    loss = F.cross_entropy(logits, b_labels, reduction='sum') / args.batch_size
                 elif task == 'para':
-                    logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
-                    loss = F.binary_cross_entropy_with_logits(logits, b_labels.view(-1), reduction='sum') / args.batch_size
+                    logits_1, logits_2 = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
+                    loss = F.cosine_embedding_loss(logits_1, logits_2, b_labels, margin=0.25, reduction='sum') / args.batch_size
                 elif task == 'sts':
                     logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
-                    loss = F.mse_loss(logits, b_labels.view(-1), reduction='sum') / args.batch_size
+                    loss = F.mse_loss(logits, b_labels, reduction='sum') / args.batch_size
 
                 loss.backward()
                 optimizer.step()
