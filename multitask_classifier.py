@@ -198,8 +198,6 @@ def train_multitask(args):
                     b_ids2 = b_ids2.to(device)
                     b_mask2 = b_mask2.to(device)
                     b_labels = b_labels.to(device).view(-1).float()
-                    if task == 'para':
-                        b_labels = torch.where(b_labels == 0, torch.tensor(-1), b_labels)
 
                 optimizer.zero_grad()
 
