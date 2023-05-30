@@ -87,8 +87,8 @@ class MultitaskBERT(nn.Module):
         during evaluation, and handled as a logit by the appropriate loss function.
         '''
 
-        fusion_input = torch.stack([input_ids_1, input_ids_2], dim=1)
-        fusion_attention_mask = torch.stack([attention_mask_1, attention_mask_2], dim=1)
+        fusion_input = torch.cat((input_ids_1, input_ids_2), dim=1)
+        fusion_attention_mask = torch.cat((attention_mask_1, attention_mask_2), dim=1)
         bert_output = self.forward(fusion_input, fusion_attention_mask)
         logits = self.proj_paraphrase(bert_output['pooler_output']).contiguous().view(-1)
         return logits
