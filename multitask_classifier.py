@@ -53,7 +53,7 @@ class MultitaskBERT(nn.Module):
                 param.requires_grad = True
         
         self.proj_sentiment = nn.Linear(BERT_HIDDEN_SIZE, N_SENTIMENT_CLASSES)
-        self.proj_paraphrase = nn.Linear(BERT_HIDDEN_SIZE, BERT_HIDDEN_SIZE)
+        self.proj_paraphrase = nn.Linear(BERT_HIDDEN_SIZE, 1)
         self.proj_similarity = nn.Linear(BERT_HIDDEN_SIZE, BERT_HIDDEN_SIZE)
 
 
@@ -87,11 +87,10 @@ class MultitaskBERT(nn.Module):
         during evaluation, and handled as a logit by the appropriate loss function.
         '''
 
-        bert_output = self.forward(input_ids_1, attention_mask_1)
-        logits_1 = self.proj_paraphrase(bert_output['pooler_output']).contiguous().view(-1, BERT_HIDDEN_SIZE)
-        bert_output = self.forward(input_ids_2, attention_mask_2)
-        logits_2 = self.proj_paraphrase(bert_output['pooler_output']).contiguous().view(-1, BERT_HIDDEN_SIZE)
-        logits = F.cosine_similarity(logits_1, logits_2, dim=1)
+        fusion_input = torch.stack([input_ids_1, input_ids_2], dim=1)
+        fusion_attention_mask = torch.stack([attention_mask_1, attention_mask_2], dim=1)
+        bert_output = self.forward(fusion_input, fusion_attention_mask)
+        logits = self.proj_paraphrase(bert_output['pooler_output']).contiguous().view(-1)
         return logits
 
 
